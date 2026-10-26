@@ -2342,8 +2342,10 @@ _AZURE_MI_CLIENT_ID = "8cafa2b1-a2a7-4ad9-814a-ffe4aed7e800"
 
 
 class AzureOpenAIBackend(CliBackend):
-    """Drives Azure OpenAI gpt-5.x deployments via managed identity, or any
-    OpenAI-compatible chat-completions server via explicit compat auth.
+    """Drives Azure OpenAI gpt-5.x deployments via managed identity (default),
+    an API key (AZURE_OPENAI_AUTH_MODE=api_key) or Azure CLI credentials
+    (AZURE_OPENAI_AUTH_MODE=azure_cli), or any OpenAI-compatible
+    chat-completions server via explicit compat auth.
 
     Mirrors the intern's blog_1 setup (avail_api.md): managed-identity auth, the
     same endpoints/deployments. Reuses CliBackend's attempt/judge/reflect prompts
@@ -2364,6 +2366,9 @@ class AzureOpenAIBackend(CliBackend):
     name = "azure"
 
     _COMPAT_MODES = {"openai_compatible", "compat", "openai"}
+    # Azure-client auth modes. Empty keeps the historical managed-identity
+    # default; api_key and azure_cli match skillopt.model.azure_openai.
+    _AZURE_AUTH_MODES = {"", "managed_identity", "api_key", "azure_cli"}
     # Hosts the managed-identity (AAD bearer token) path may talk to. A custom
     # endpoint outside these domains must use explicit compat auth — we never
     # send Azure credentials to an arbitrary host.
@@ -2396,9 +2401,13 @@ class AzureOpenAIBackend(CliBackend):
                 return ep
         return "https://oaidr9.openai.azure.com/"
 
+    @staticmethod
+    def _auth_mode() -> str:
+        return os.environ.get("AZURE_OPENAI_AUTH_MODE", "").strip().lower()
+
     @classmethod
     def _compat_mode(cls) -> bool:
-        return os.environ.get("AZURE_OPENAI_AUTH_MODE", "").strip().lower() in cls._COMPAT_MODES
+        return cls._auth_mode() in cls._COMPAT_MODES
 
     @staticmethod
     def _read_compat_max_tokens() -> int:
@@ -2479,25 +2488,52 @@ class AzureOpenAIBackend(CliBackend):
                     max_retries=4,
                 )
             else:
-                # Security guard: the managed-identity path attaches an Azure AD
-                # bearer token to every request. Refuse to do that for a custom
-                # non-Azure endpoint — leaking a live AAD token to an arbitrary
-                # host must be impossible by (mis)configuration.
+                mode = self._auth_mode()
+                if mode not in self._AZURE_AUTH_MODES:
+                    raise ValueError(
+                        f"azure_openai backend: unsupported AZURE_OPENAI_AUTH_MODE={mode!r}; "
+                        "expected managed_identity (default), api_key, azure_cli, "
+                        "or openai_compatible."
+                    )
+                # Security guard: every Azure auth mode attaches a credential
+                # (an AAD bearer token or the resource API key) to each request.
+                # Refuse to do that for a custom non-Azure endpoint — leaking a
+                # live credential to an arbitrary host must be impossible by
+                # (mis)configuration.
                 if not self._is_azure_host():
                     raise ValueError(
-                        "azure_openai backend: refusing to send Azure managed-identity "
+                        "azure_openai backend: refusing to send Azure "
                         f"credentials to non-Azure endpoint {self.endpoint!r}. For "
                         "OpenAI-compatible servers set AZURE_OPENAI_AUTH_MODE="
                         "openai_compatible and AZURE_OPENAI_API_KEY."
                     )
-                from azure.identity import ManagedIdentityCredential, get_bearer_token_provider
                 from openai import AzureOpenAI
-                cred = ManagedIdentityCredential(client_id=_AZURE_MI_CLIENT_ID)
-                tp = get_bearer_token_provider(cred, "https://cognitiveservices.azure.com/.default")
-                self._client = AzureOpenAI(
-                    azure_endpoint=self.endpoint, azure_ad_token_provider=tp,
-                    api_version=self.api_version, max_retries=4,
-                )
+                if mode == "api_key":
+                    api_key = os.environ.get("AZURE_OPENAI_API_KEY", "").strip()
+                    if not api_key:
+                        raise ValueError(
+                            "azure_openai backend: AZURE_OPENAI_AUTH_MODE=api_key "
+                            "requires AZURE_OPENAI_API_KEY."
+                        )
+                    self._client = AzureOpenAI(
+                        azure_endpoint=self.endpoint, api_key=api_key,
+                        api_version=self.api_version, max_retries=4,
+                    )
+                else:
+                    from azure.identity import (
+                        AzureCliCredential,
+                        ManagedIdentityCredential,
+                        get_bearer_token_provider,
+                    )
+                    if mode == "azure_cli":
+                        cred = AzureCliCredential()
+                    else:
+                        cred = ManagedIdentityCredential(client_id=_AZURE_MI_CLIENT_ID)
+                    tp = get_bearer_token_provider(cred, "https://cognitiveservices.azure.com/.default")
+                    self._client = AzureOpenAI(
+                        azure_endpoint=self.endpoint, azure_ad_token_provider=tp,
+                        api_version=self.api_version, max_retries=4,
+                    )
         return self._client
 
     def _call(self, prompt: str, *, max_tokens: int = 1024, retries: int = 5) -> str:

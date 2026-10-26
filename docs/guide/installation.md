@@ -138,6 +138,10 @@ Use `AZURE_OPENAI_AUTH_MODE=azure_cli` for Azure CLI credentials, or
 `managed_identity` with an optional
 `AZURE_OPENAI_MANAGED_IDENTITY_CLIENT_ID`.
 
+SkillOpt-Sleep's `azure_openai` backend accepts the same `api_key` and
+`azure_cli` modes. When `AZURE_OPENAI_AUTH_MODE` is unset, Sleep defaults to
+managed identity rather than `azure_cli`.
+
 The research `claude_chat` backend is a Claude Code CLI adapter, not a direct
 Anthropic API client. Install and authenticate `claude`, and set
 `CLAUDE_CLI_BIN` only if the executable is not available as `claude` on

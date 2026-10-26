@@ -3,8 +3,8 @@
 Pure-stdlib (unittest), deterministic, NO network, no API key. Covers the
 integration points requested in review of the openai-compatible feature:
   * CLI acceptance of --backend azure_openai
-  * compat-vs-Azure client selection
-  * endpoint resolution and the managed-identity credential guard
+  * compat-vs-Azure client selection, including api_key and azure_cli auth
+  * endpoint resolution and the Azure credential guard
   * provider-neutral request kwargs (opt-in extra body / token cap)
   * retry-success error clearing + empty-response diagnostics
   * example runner exit-code propagation
@@ -118,6 +118,73 @@ class TestClientSelection(unittest.TestCase):
             with self.assertRaises(ValueError) as ctx:
                 be._get_client()
         self.assertIn("openai_compatible", str(ctx.exception))
+
+    @unittest.skipUnless(HAVE_OPENAI, "openai package not installed")
+    def test_api_key_mode_builds_azure_client_with_key(self):
+        from openai import AzureOpenAI
+        env = {
+            "AZURE_OPENAI_AUTH_MODE": "api_key",
+            "AZURE_OPENAI_ENDPOINT": "https://res.cognitiveservices.azure.com/",
+            "AZURE_OPENAI_API_KEY": "test-not-a-real-key",
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            be = AzureOpenAIBackend(deployment="gpt-5.5")
+            client = be._get_client()
+        self.assertIsInstance(client, AzureOpenAI)
+        self.assertEqual(client.api_key, "test-not-a-real-key")
+
+    def test_api_key_mode_requires_key(self):
+        env = {
+            "AZURE_OPENAI_AUTH_MODE": "api_key",
+            "AZURE_OPENAI_ENDPOINT": "https://res.openai.azure.com/",
+        }
+        with mock.patch.dict(os.environ, env, clear=True):
+            be = AzureOpenAIBackend(deployment="gpt-5.5")
+            with self.assertRaises(ValueError) as ctx:
+                be._get_client()
+        self.assertIn("AZURE_OPENAI_API_KEY", str(ctx.exception))
+
+    def test_api_key_mode_refuses_non_azure_endpoint(self):
+        # The Azure key is a live credential too: never send it to a custom host.
+        env = {
+            "AZURE_OPENAI_AUTH_MODE": "api_key",
+            "AZURE_OPENAI_ENDPOINT": "https://api.deepseek.com",
+            "AZURE_OPENAI_API_KEY": "test-not-a-real-key",
+        }
+        with mock.patch.dict(os.environ, env, clear=True):
+            be = AzureOpenAIBackend(deployment="some-model")
+            with self.assertRaises(ValueError) as ctx:
+                be._get_client()
+        self.assertIn("openai_compatible", str(ctx.exception))
+
+    def test_azure_cli_mode_uses_cli_credential(self):
+        env = {
+            "AZURE_OPENAI_AUTH_MODE": "azure_cli",
+            "AZURE_OPENAI_ENDPOINT": "https://res.openai.azure.com/",
+        }
+        fake_identity = SimpleNamespace(
+            AzureCliCredential=mock.Mock(name="AzureCliCredential"),
+            ManagedIdentityCredential=mock.Mock(name="ManagedIdentityCredential"),
+            get_bearer_token_provider=mock.Mock(return_value=lambda: "token"),
+        )
+        fake_openai = SimpleNamespace(AzureOpenAI=mock.Mock(name="AzureOpenAI"))
+        with mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch.dict(sys.modules, {"azure.identity": fake_identity, "openai": fake_openai}):
+            be = AzureOpenAIBackend(deployment="gpt-5.5")
+            be._get_client()
+        fake_identity.AzureCliCredential.assert_called_once_with()
+        fake_identity.ManagedIdentityCredential.assert_not_called()
+
+    def test_unknown_auth_mode_is_rejected(self):
+        env = {
+            "AZURE_OPENAI_AUTH_MODE": "apikey",
+            "AZURE_OPENAI_ENDPOINT": "https://res.openai.azure.com/",
+        }
+        with mock.patch.dict(os.environ, env, clear=True):
+            be = AzureOpenAIBackend(deployment="gpt-5.5")
+            with self.assertRaises(ValueError) as ctx:
+                be._get_client()
+        self.assertIn("apikey", str(ctx.exception))
 
     def test_azure_host_detection(self):
         with mock.patch.dict(os.environ, {}, clear=True):

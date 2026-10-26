@@ -36,8 +36,9 @@ is unchanged:
    servers reject with `404 Resource not found` — the sleep cycle then scores
    every rollout `0.0` with no diagnostic.)
 
-4. **Managed-identity credential guard.** The managed-identity path attaches an
-   Azure AD bearer token to every request. It therefore accepts only an **HTTPS**
+4. **Azure credential guard.** Every Azure auth mode attaches a credential to
+   every request: an Azure AD bearer token (`managed_identity`, `azure_cli`) or
+   the resource API key (`api_key`). It therefore accepts only an **HTTPS**
    endpoint whose hostname ends in `*.openai.azure.com` or
    `*.cognitiveservices.azure.com`. An HTTP endpoint — even one with an
    Azure-looking hostname — and any host outside those suffixes are rejected
@@ -63,9 +64,9 @@ sleep cycle):
 
 | Variable | Meaning |
 |---|---|
-| `AZURE_OPENAI_AUTH_MODE` | `openai_compatible` (or `compat`/`openai`) selects the plain OpenAI client. Unset/other = Azure managed identity (default). |
-| `AZURE_OPENAI_ENDPOINT` | Base URL of the server, e.g. `https://api.deepseek.com`. Azure managed identity requires HTTPS plus an approved Azure hostname. |
-| `AZURE_OPENAI_API_KEY` | API key sent by the compat client to the configured base URL. |
+| `AZURE_OPENAI_AUTH_MODE` | `openai_compatible` (or `compat`/`openai`) selects the plain OpenAI client. For the Azure client: unset or `managed_identity` = managed identity (default), `api_key` = `AZURE_OPENAI_API_KEY`, `azure_cli` = Azure CLI credentials. Any other value is rejected. |
+| `AZURE_OPENAI_ENDPOINT` | Base URL of the server, e.g. `https://api.deepseek.com`. Every Azure auth mode requires HTTPS plus an approved Azure hostname. |
+| `AZURE_OPENAI_API_KEY` | API key sent by the compat client to the configured base URL, or by the Azure client when `AZURE_OPENAI_AUTH_MODE=api_key`. |
 | `SKILLOPT_SLEEP_COMPAT_MAX_TOKENS` | Optional int (default `8192`): `max_tokens` sent in compat mode. |
 | `SKILLOPT_SLEEP_CHAT_EXTRA_BODY` | Optional JSON object passed as `extra_body` for provider-specific fields in compat mode only. It is ignored in native Azure mode. |
 
@@ -84,8 +85,9 @@ sleep cycle):
   for an explicitly trusted loopback development server such as
   `http://127.0.0.1:8000/v1`; the compat client sends its API key to the configured
   URL.
-- Azure managed-identity credentials have the stricter invariant described
-  above: HTTPS **and** an approved Azure hostname are both mandatory.
+- Azure credentials (managed identity, Azure CLI, or an Azure API key) have the
+  stricter invariant described above: HTTPS **and** an approved Azure hostname
+  are both mandatory.
 
 ## How to use it
 
