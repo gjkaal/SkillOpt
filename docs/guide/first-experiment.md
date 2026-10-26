@@ -130,6 +130,11 @@ Then open `http://localhost:7860` in your browser to configure parameters and
 launch training. The default host is `0.0.0.0`; pass `--host 127.0.0.1` for a
 local-only dashboard.
 
+The **Sleep Monitor** tab follows a SkillOpt-Sleep run (started from the
+command line) by reading its evidence log: run status, per-task replay results
+with the missed checks in plain language, gate scores, and proposed skill edits.
+It refreshes every 5 seconds.
+
 ## Next Steps
 
 - [Understand the training loop](training-loop.md)

@@ -21,6 +21,7 @@ import yaml
 
 from skillopt.config import flatten_config
 from skillopt.config import load_config as load_merged_config
+from skillopt_webui import sleep_monitor
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -699,6 +700,68 @@ def build_ui():
                 )
 
                 scan_btn.click(scan_outputs, output_dir, results_table)
+
+            # ── Tab 4: Sleep Monitor ─────────────────────────────────
+            with gr.Tab("Sleep Monitor"):
+                gr.Markdown(
+                    "Follow a SkillOpt-Sleep run from its evidence log. Dry-runs log to "
+                    "`~/.skillopt-sleep/evidence/`; staged runs log under the project's "
+                    "`.skillopt-sleep/staging/`. Add project folders to "
+                    f"`{sleep_monitor.EXTRA_PROJECTS_ENV}` to list their staged runs."
+                )
+                with gr.Row():
+                    sleep_file = gr.Dropdown(
+                        choices=[], label="Evidence log", scale=4,
+                    )
+                    sleep_list_btn = gr.Button("Refresh list", scale=1)
+                    sleep_auto = gr.Checkbox(value=True, label="Auto-refresh (5 s)", scale=1)
+                sleep_overview = gr.HTML(sleep_monitor.render_overview(None))
+                with gr.Tabs():
+                    with gr.Tab("Replay results"):
+                        sleep_table = gr.HTML(sleep_monitor.render_results_table(None))
+                    with gr.Tab("Task detail"):
+                        sleep_task = gr.Dropdown(choices=[], label="Task")
+                        sleep_detail = gr.HTML(sleep_monitor.render_task_detail(None, ""))
+                    with gr.Tab("Proposed edits"):
+                        sleep_edits = gr.HTML(sleep_monitor.render_edits(None))
+                sleep_timer = gr.Timer(5, active=True)
+
+                def _sleep_summary(choice):
+                    path = sleep_monitor.resolve_evidence_choice(choice, PROJECT_ROOT)
+                    return sleep_monitor.load_summary(path) if path else None
+
+                def on_sleep_tick(choice, task_id):
+                    summary = _sleep_summary(choice)
+                    return (
+                        sleep_monitor.render_overview(summary),
+                        sleep_monitor.render_results_table(summary),
+                        sleep_monitor.render_task_detail(summary, task_id),
+                        sleep_monitor.render_edits(summary),
+                    )
+
+                def on_sleep_file(choice):
+                    summary = _sleep_summary(choice)
+                    tasks = sleep_monitor.task_choices(summary)
+                    return (
+                        *on_sleep_tick(choice, ""),
+                        gr.update(choices=tasks, value=None),
+                    )
+
+                def on_sleep_list():
+                    choices = sleep_monitor.evidence_choices(PROJECT_ROOT)
+                    return gr.update(choices=choices, value=choices[0][1] if choices else None)
+
+                sleep_views = [sleep_overview, sleep_table, sleep_detail, sleep_edits]
+                sleep_list_btn.click(on_sleep_list, outputs=sleep_file)
+                sleep_file.change(on_sleep_file, sleep_file, sleep_views + [sleep_task])
+                sleep_task.change(
+                    lambda choice, task_id: sleep_monitor.render_task_detail(
+                        _sleep_summary(choice), task_id),
+                    [sleep_file, sleep_task], sleep_detail,
+                )
+                sleep_timer.tick(on_sleep_tick, [sleep_file, sleep_task], sleep_views)
+                sleep_auto.change(lambda on: gr.Timer(active=on), sleep_auto, sleep_timer)
+                app.load(on_sleep_list, outputs=sleep_file)
 
     return app
 
