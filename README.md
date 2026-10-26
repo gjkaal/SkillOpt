@@ -2,6 +2,37 @@
 
 *Train agent skills like you train neural networks — with epochs, (mini-)batchsize, learning rates, and validation gates — but without touching model weights.*
 
+> **About this fork.** This repository ([gjkaal/SkillOpt](https://github.com/gjkaal/SkillOpt))
+> is a fork of [microsoft/SkillOpt](https://github.com/microsoft/SkillOpt). All
+> fork-specific work lives on the `trunk` branch; `main` follows upstream unchanged.
+> The rest of this README is the upstream text and describes upstream behavior.
+>
+> It deviates from upstream in two places, both needed to run SkillOpt-Sleep
+> experiments from a developer workstation against a personal Azure AI Foundry
+> deployment:
+>
+> 1. **API-key and Azure CLI auth for the Sleep `azure_openai` backend**
+>    (`skillopt_sleep/backend.py`). Upstream Sleep only authenticates with
+>    managed identity (using a fixed client ID) or the generic
+>    `openai_compatible` mode, and silently falls back to managed identity for
+>    any other `AZURE_OPENAI_AUTH_MODE`. The installation guide documents
+>    `AZURE_OPENAI_AUTH_MODE=api_key`, but Sleep ignored it, so on a workstation
+>    every model call failed authentication and every task scored 0. The
+>    `openai_compatible` workaround does not help for gpt-5.x deployments, which
+>    reject the `max_tokens` parameter that mode sends. This fork adds `api_key`
+>    and `azure_cli` modes, rejects unknown modes instead of falling back, and
+>    applies the existing HTTPS + Azure-host guard to every Azure auth mode.
+> 2. **A Sleep Monitor tab in the WebUI** (`skillopt_webui/sleep_monitor.py`).
+>    Upstream's WebUI only monitors research training runs it starts itself;
+>    Sleep runs started from the command line are invisible, and their evidence
+>    log is raw JSONL. The new tab renders that log as run status, gate and
+>    held-out scores, per-task results with missed checks in plain language,
+>    full responses, and proposed skill edits with their gate verdict.
+>
+> Both changes carry unit tests and documentation updates, and are kept as
+> separate commits so they can be offered upstream independently. To pull in
+> upstream changes: `git fetch upstream` and merge `upstream/main` into `trunk`.
+
 [![Project Page](https://img.shields.io/badge/Project%20Page-SkillOpt-8dbb3c)](https://microsoft.github.io/SkillOpt/) [![Paper](https://img.shields.io/badge/Paper-arXiv-b31b1b)](https://arxiv.org/abs/2605.23904) [![Project Video](https://img.shields.io/badge/Project%20Video-Watch%20Demo-ff0000)](https://youtu.be/JUBMDTCiM0M) [![PyPI](https://img.shields.io/badge/PyPI-skillopt-green.svg)](https://pypi.org/project/skillopt/) [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 <p align="center">

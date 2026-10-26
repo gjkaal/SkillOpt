@@ -4,6 +4,43 @@ All notable changes to SkillOpt are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/) and the format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased - fork]
+
+Changes on the `trunk` branch of the [gjkaal/SkillOpt](https://github.com/gjkaal/SkillOpt)
+fork that are not in [microsoft/SkillOpt](https://github.com/microsoft/SkillOpt).
+They are kept in this section, separate from upstream's entries below, so that
+merging `upstream/main` does not conflict. See "About this fork" in the README
+for the reasons behind them.
+
+### Added
+- **Sleep Monitor tab in the WebUI** (`skillopt_webui/sleep_monitor.py`). Follows
+  a SkillOpt-Sleep run started from the command line by reading its evidence
+  log: run status and current phase, baseline/gate/held-out scores, per-task
+  replay results with missed checks shown by their plain-language description,
+  task detail with the full model response, and proposed skill/memory edits
+  with their gate verdict. Auto-refreshes every 5 seconds. Only logs discovered
+  under the Sleep state directory and project staging roots (plus folders in
+  `SKILLOPT_WEBUI_SLEEP_PROJECTS`) can be opened, and all rendered content is
+  HTML-escaped.
+- **`api_key` and `azure_cli` auth modes for the SkillOpt-Sleep `azure_openai`
+  backend.** `AZURE_OPENAI_AUTH_MODE=api_key` uses `AZURE_OPENAI_API_KEY` with
+  the Azure client (and fails clearly when the key is missing);
+  `AZURE_OPENAI_AUTH_MODE=azure_cli` uses Azure CLI credentials. Both send
+  `max_completion_tokens`, so gpt-5.x deployments work. Unset or
+  `managed_identity` keeps the existing managed-identity default.
+
+### Changed
+- The Sleep `azure_openai` backend now rejects an unknown
+  `AZURE_OPENAI_AUTH_MODE` instead of silently falling back to managed
+  identity.
+- The HTTPS + Azure-hostname credential guard now applies to every Azure auth
+  mode, including the API key, not only to managed identity.
+
+### Fixed
+- `AZURE_OPENAI_AUTH_MODE=api_key`, documented in the installation guide, was
+  ignored by SkillOpt-Sleep, so every model call failed authentication outside
+  a managed-identity host and every task scored 0.
+
 ## [Unreleased]
 
 ### Added
